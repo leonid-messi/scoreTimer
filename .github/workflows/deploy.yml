@@ -13,7 +13,7 @@ jobs:
       SSH_HOST: ${{ secrets.SSH_HOST }}
       SSH_USER: ${{ secrets.SSH_USER }}
       SSHPASS: ${{ secrets.SSH_PASS }}
-      SSH_PORT: ${{ secrets.SSH_PORT || '22' }}   # optional: add SSH_PORT secret if you use a non-standard port
+      SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
       SSH_OPTS: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p ${{ secrets.SSH_PORT || '22' }}"
     steps:
       - name: Checkout
@@ -22,7 +22,6 @@ jobs:
       - name: Install rsync & sshpass
         run: sudo apt-get update && sudo apt-get install -y rsync sshpass
 
-      # Option A: trust host key once (safer). Keep this step AND still keep SSH_OPTS as a fallback.
       - name: Add host key to known_hosts
         run: |
           mkdir -p ~/.ssh
@@ -46,13 +45,27 @@ jobs:
           sshpass -e ssh $SSH_OPTS "$SSH_USER@$SSH_HOST" << 'EOF'
           set -e
           cd "$APP_DIR"
+
+          # Node.js & npm sicherstellen
           if ! command -v node >/dev/null 2>&1; then
-            sudo apt update && sudo apt install -y nodejs npm
-          end_if_marker
+            sudo apt update
+            sudo apt install -y nodejs npm
+          fi
+
+          # PM2 sicherstellen
           if ! command -v pm2 >/dev/null 2>&1; then
             sudo npm install -g pm2
           fi
+
+          # Dependencies
           npm ci || npm install
-          pm2 describe multitable >/dev/null 2>&1 && pm2 restart multitable || pm2 start server.js --name multitable
+
+          # Prozess starten/neu starten
+          if pm2 describe multitable >/dev/null 2>&1; then
+            pm2 restart multitable
+          else
+            pm2 start server.js --name multitable
+          fi
+
           pm2 save
           EOF
