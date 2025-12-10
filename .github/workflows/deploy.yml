@@ -1,0 +1,43 @@
+name: Deploy to Linux Server via SSH Password
+
+on:
+  push:
+    branches: [ "main" ]  # deploy on push to main branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install rsync and sshpass
+        run: sudo apt-get update && sudo apt-get install -y rsync sshpass
+
+      - name: Deploy to server
+        env:
+          SSHPASS: ${{ secrets.SSH_PASS }}
+        run: |
+          APP_DIR=${{ secrets.APP_DIR || '/home/${{ secrets.SSH_USER }}/multitable-timer' }}
+          # Copy all files to server (delete old ones)
+          sshpass -e rsync -az --delete \
+            --exclude ".git" \
+            --exclude ".github" \
+            ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:$APP_DIR/
+
+          # Install & start app remotely
+          sshpass -e ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          set -e
+          cd "${APP_DIR:-${{ secrets.APP_DIR }}}"
+          if ! command -v node >/dev/null 2>&1; then
+            sudo apt update
+            sudo apt install -y nodejs npm
+          fi
+          if ! command -v pm2 >/dev/null 2>&1; then
+            sudo npm install -g pm2
+          fi
+          npm ci || npm install
+          pm2 describe multitable >/dev/null 2>&1 && pm2 restart multitable || pm2 start server.js --name multitable
+          pm2 save
+          EOF
