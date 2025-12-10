@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Multi-Table Timer & Scoreboard</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <h1>Timer & Scoreboard</h1>
+
+      <div class="controls-row">
+        <label class="view-toggle">
+          <input type="checkbox" id="viewAll" />
+          <span>Alle Tische anzeigen</span>
+        </label>
+
+        <label for="tableSelect" id="singleLabel">Tisch:</label>
+        <select id="tableSelect">
+          <option value="1">Tisch 1</option>
+          <option value="2">Tisch 2</option>
+          <option value="3">Tisch 3</option>
+        </select>
+
+        <button id="resetAll" class="ghost">Alles zurücksetzen</button>
+      </div>
+    </header>
+
+    <main id="cardsContainer" class="cards-container">
+      <!-- Karten werden dynamisch gerendert -->
+    </main>
+
+    <footer class="foot">
+      <p>Echtzeit-Sync • Mobilfreundlich • Drei unabhängige Tische</p>
+    </footer>
+
+    <script src="client.js"></script>
+  </body>
+</html>
