@@ -2,38 +2,53 @@ name: Deploy to Linux Server via SSH Password
 
 on:
   push:
-    branches: [ "main" ]  # deploy on push to main branch
+    branches: [ "main" ]
   workflow_dispatch:
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
+    env:
+      APP_DIR: ${{ secrets.APP_DIR || '/home/' }}${{ secrets.SSH_USER }}/multitable-timer
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSHPASS: ${{ secrets.SSH_PASS }}
+      SSH_PORT: ${{ secrets.SSH_PORT || '22' }}   # optional: add SSH_PORT secret if you use a non-standard port
+      SSH_OPTS: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p ${{ secrets.SSH_PORT || '22' }}"
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install rsync and sshpass
+      - name: Install rsync & sshpass
         run: sudo apt-get update && sudo apt-get install -y rsync sshpass
 
-      - name: Deploy to server
-        env:
-          SSHPASS: ${{ secrets.SSH_PASS }}
+      # Option A: trust host key once (safer). Keep this step AND still keep SSH_OPTS as a fallback.
+      - name: Add host key to known_hosts
         run: |
-          APP_DIR=${{ secrets.APP_DIR || '/home/${{ secrets.SSH_USER }}/multitable-timer' }}
-          # Copy all files to server (delete old ones)
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts || true
+
+      - name: Create target dir on server (and install rsync if missing)
+        run: |
+          sshpass -e ssh $SSH_OPTS "$SSH_USER@$SSH_HOST" \
+            "mkdir -p '$APP_DIR' && (command -v rsync >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y rsync))"
+
+      - name: Rsync project to server
+        run: |
           sshpass -e rsync -az --delete \
             --exclude ".git" \
             --exclude ".github" \
-            ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:$APP_DIR/
+            -e "ssh $SSH_OPTS" \
+            ./ "$SSH_USER@$SSH_HOST:$APP_DIR/"
 
-          # Install & start app remotely
-          sshpass -e ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+      - name: Install deps & (re)start with pm2
+        run: |
+          sshpass -e ssh $SSH_OPTS "$SSH_USER@$SSH_HOST" << 'EOF'
           set -e
-          cd "${APP_DIR:-${{ secrets.APP_DIR }}}"
+          cd "$APP_DIR"
           if ! command -v node >/dev/null 2>&1; then
-            sudo apt update
-            sudo apt install -y nodejs npm
-          fi
+            sudo apt update && sudo apt install -y nodejs npm
+          end_if_marker
           if ! command -v pm2 >/dev/null 2>&1; then
             sudo npm install -g pm2
           fi
