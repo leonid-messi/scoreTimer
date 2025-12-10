@@ -1,0 +1,31 @@
+stages:
+  - deploy
+
+deploy_production:
+  stage: deploy
+  image: node:20
+  only:
+    - main  # oder dein Branch
+  before_script:
+    - apt-get update && apt-get install -y rsync openssh-client
+    - mkdir -p ~/.ssh
+    - echo "$SSH_KEY" > ~/.ssh/id_ed25519
+    - chmod 600 ~/.ssh/id_ed25519
+    - ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+    - export APP_DIR="${APP_DIR:-/home/$SSH_USER/multitable-timer}"
+  script:
+    - rsync -az --delete --exclude ".git" --exclude ".gitlab-ci.yml" -e "ssh -i ~/.ssh/id_ed25519" ./ $SSH_USER@$SSH_HOST:$APP_DIR/
+    - |
+      ssh -i ~/.ssh/id_ed25519 $SSH_USER@$SSH_HOST << 'EOF'
+      set -e
+      cd "${APP_DIR:-/home/$SSH_USER/multitable-timer}"
+      if ! command -v node >/dev/null 2>&1; then
+        sudo apt update && sudo apt install -y nodejs npm
+      fi
+      if ! command -v pm2 >/dev/null 2>&1; then
+        sudo npm install -g pm2
+      fi
+      npm ci || npm install
+      pm2 describe multitable >/dev/null 2>&1 && pm2 restart multitable || pm2 start server.js --name multitable
+      pm2 save
+      EOF
